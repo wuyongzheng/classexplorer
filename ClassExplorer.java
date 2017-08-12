@@ -5,6 +5,19 @@ import java.util.*;
 
 public class ClassExplorer
 {
+	final private static char[] hexArray = "0123456789abcdef".toCharArray();
+	public static String bytesToHex (byte [] bytes, int offset, int length)
+	{
+		char[] hexChars = new char[length * 2 ];
+		for (int j = 0; j < length; j++) {
+			int v = bytes[offset + j] & 0xff;
+			hexChars[j * 2] = hexArray[v >>> 4];
+			hexChars[j * 2 + 1] = hexArray[v & 0xf];
+		}
+		return new String(hexChars);
+	}
+	public static String bytesToHex (byte [] bytes) { return bytesToHex(bytes, 0, bytes.length); }
+
 	private static final Hashtable<Integer, String> constant_pool = new Hashtable<Integer, String>();
 
 	private static void dump_bytes (ByteBuffer in, PrintWriter out, int len) throws Exception
@@ -27,9 +40,103 @@ public class ClassExplorer
 		}
 	}
 
+	private static int getIntFromBytes (byte high, byte low) { return ((high << 8) | (low & 0xff)) & 0xffff;}
+	private static int getIntFromBytes (byte b0, byte b1, byte b2, byte b3)
+	{
+		return ((b0 & 0xff) << 24) |
+			((b1 & 0xff) << 16) |
+			((b2 & 0xff) << 8) |
+			(b3 & 0xff);
+	}
+
+	/* Refer https://en.wikipedia.org/wiki/Java_bytecode_instruction_listings
+	 *       https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-6.html */
+	private static final byte [] instructionSize = new byte [] {
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,2,1,2,2,1,1,1,1,1,0,0,0,0,0,0,
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+		0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,2,2,
+		2,2,2,2,2,2,2,2,2,1,100,100,0,0,0,0,0,0,2,2,2,2,2,2,2,4,4,2,1,2,0,0,
+		2,2,0,0,100,3,2,2,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	private static final String [] instructionMnemonic = new String [] {
+		"nop","aconst_null","iconst_m1","iconst_0","iconst_1","iconst_2","iconst_3","iconst_4",
+		"iconst_5","lconst_0","lconst_1","fconst_0","fconst_1","fconst_2","dconst_0","dconst_1",
+		"bipush","sipush","ldc","ldc_w","ldc2_w","iload","lload","fload",
+		"dload","aload","iload_0","iload_1","iload_2","iload_3","lload_0","lload_1",
+		"lload_2","lload_3","fload_0","fload_1","fload_2","fload_3","dload_0","dload_1",
+		"dload_2","dload_3","aload_0","aload_1","aload_2","aload_3","iaload","laload",
+		"faload","daload","aaload","baload","caload","saload","istore","lstore",
+		"fstore","dstore","astore","istore_0","istore_1","istore_2","istore_3","lstore_0",
+		"lstore_1","lstore_2","lstore_3","fstore_0","fstore_1","fstore_2","fstore_3","dstore_0",
+		"dstore_1","dstore_2","dstore_3","astore_0","astore_1","astore_2","astore_3","iastore",
+		"lastore","fastore","dastore","aastore","bastore","castore","sastore","pop",
+		"pop2","dup","dup_x1","dup_x2","dup2","dup2_x1","dup2_x2","swap",
+		"iadd","ladd","fadd","dadd","isub","lsub","fsub","dsub",
+		"imul","lmul","fmul","dmul","idiv","ldiv","fdiv","ddiv",
+		"irem","lrem","frem","drem","ineg","lneg","fneg","dneg",
+		"ishl","lshl","ishr","lshr","iushr","lushr","iand","land",
+		"ior","lor","ixor","lxor","iinc","i2l","i2f","i2d",
+		"l2i","l2f","l2d","f2i","f2l","f2d","d2i","d2l",
+		"d2f","i2b","i2c","i2s","lcmp","fcmpl","fcmpg","dcmpl",
+		"dcmpg","ifeq","ifne","iflt","ifge","ifgt","ifle","if_icmpeq",
+		"if_icmpne","if_icmplt","if_icmpge","if_icmpgt","if_icmple","if_acmpeq","if_acmpne","goto",
+		"jsr","ret","tableswitch","lookupswitch","ireturn","lreturn","freturn","dreturn",
+		"areturn","return","getstatic","putstatic","getfield","putfield","invokevirtual","invokespecial",
+		"invokestatic","invokeinterface","invokedynamic","new","newarray","anewarray","arraylength","athrow",
+		"checkcast","instanceof","monitorenter","monitorexit","wide","multianewarray","ifnull","ifnonnull",
+		"goto_w","jsr_w","breakpoint","reserved_cb","reserved_cc","reserved_cd","reserved_ce","reserved_cf",
+		"reserved_d0","reserved_d1","reserved_d2","reserved_d3","reserved_d4","reserved_d5","reserved_d6","reserved_d7",
+		"reserved_d8","reserved_d9","reserved_da","reserved_db","reserved_dc","reserved_dd","reserved_de","reserved_df",
+		"reserved_e0","reserved_e1","reserved_e2","reserved_e3","reserved_e4","reserved_e5","reserved_e6","reserved_e7",
+		"reserved_e8","reserved_e9","reserved_ea","reserved_eb","reserved_ec","reserved_ed","reserved_ee","reserved_ef",
+		"reserved_f0","reserved_f1","reserved_f2","reserved_f3","reserved_f4","reserved_f5","reserved_f6","reserved_f7",
+		"reserved_f8","reserved_f9","reserved_fa","reserved_fb","reserved_fc","reserved_fd","impdep1","impdep2"};
 	private static void dump_code (byte [] code, PrintWriter out) throws Exception
 	{
-		dump_bytes(code, out);
+		if (code.length == 0) return;
+
+		out.println("# Begin code of " + code.length + " bytes");
+		for (int i = 0; i < code.length; i ++) {
+			int opcode = code[i] & 0xff;
+			int size;
+			if (opcode == 0xaa) { // tableswitch
+				int j = (i + 4) / 4 * 4;
+				int def = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
+				int low = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
+				int high = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
+				assert low <= high;
+				size = j + 4 * (high - low + 1) - i - 1;
+				out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": tableswitch " +
+						def + ", " + low + ", " + high + " ...");
+			} else if (opcode == 0xab) { // lookupswitch
+				int j = (i + 4) / 4 * 4;
+				int def = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
+				int npairs = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
+				assert npairs >= 0;
+				size = j + 8 * npairs - i - 1;
+				out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": lookupswitch " +
+						def + ", " + npairs + " ...");
+			} else if (opcode == 0xc4) { // wide
+				if ((code[i] & 0xff) == 0x84) { // iinc
+					size = 5;
+					out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": wide iinc " +
+							getIntFromBytes(code[i+2], code[i+3]) + ", " +
+							getIntFromBytes(code[i+4], code[i+5]));
+				} else {
+					size = 3;
+					out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": wide " +
+							instructionMnemonic[code[i+1]] + " " +
+							getIntFromBytes(code[i+2], code[i+3]));
+				}
+			} else {
+				size = instructionSize[opcode];
+				out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": " + instructionMnemonic[opcode]);
+			}
+			i += size;
+		}
+		out.println("# End code");
 	}
 
 	private static void dump_attribute_info (ByteBuffer in, PrintWriter out) throws Exception
@@ -252,7 +359,6 @@ public class ClassExplorer
 				out.writeShort(line.length() - 6);
 				out.writeBytes(line.substring(6));
 			} else if (line.startsWith("b ")) {
-				//assert line.length() % 2 == 0;
 				for (int i = 2; i + 1 < line.length(); i += 2)
 					out.write((Character.digit(line.charAt(i), 16) << 4) + Character.digit(line.charAt(i+1), 16));
 			} else {
@@ -266,6 +372,9 @@ public class ClassExplorer
 
 	private static void usage ()
 	{
+		System.out.println("Usage:");
+		System.out.println(" java [d|dump] input-classfile.class [output-dumpfile.txt]");
+		System.out.println(" java [b|build] input-dumpfile.txt [output-classfile.class]");
 	}
 
 	public static void main (String [] args) throws Exception
