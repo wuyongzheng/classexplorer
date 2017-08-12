@@ -5,6 +5,10 @@ import java.util.*;
 
 public class ClassExplorer
 {
+	private static final String [] indents = new String [] {
+		"", " ", "  ", "   ", "    ",
+		"     ", "      ", "       ", "        ", "         "};
+
 	final private static char[] hexArray = "0123456789abcdef".toCharArray();
 	public static String bytesToHex (byte [] bytes, int offset, int length)
 	{
@@ -20,20 +24,20 @@ public class ClassExplorer
 
 	private static final Hashtable<Integer, String> constant_pool = new Hashtable<Integer, String>();
 
-	private static void dump_bytes (ByteBuffer in, PrintWriter out, int len) throws Exception
+	private static void dump_bytes (ByteBuffer in, PrintWriter out, int len, int indent) throws Exception
 	{
 		for (int i = 0; i < len; i ++) {
-			if (i % 32 == 0) out.print("b ");
+			if (i % 32 == 0) out.print(indents[indent] + "b ");
 			out.printf("%02x", in.get() & 0xff);
 			if (i % 32 == 31 || i == len - 1)
 				out.println();
 		}
 	}
 
-	private static void dump_bytes (byte [] bytes, PrintWriter out) throws Exception
+	private static void dump_bytes (byte [] bytes, PrintWriter out, int indent) throws Exception
 	{
 		for (int i = 0; i < bytes.length; i ++) {
-			if (i % 32 == 0) out.print("b ");
+			if (i % 32 == 0) out.print(indents[indent] + "b ");
 			out.printf("%02x", bytes[i] & 0xff);
 			if (i % 32 == 31 || i == bytes.length - 1)
 				out.println();
@@ -93,11 +97,11 @@ public class ClassExplorer
 		"reserved_e8","reserved_e9","reserved_ea","reserved_eb","reserved_ec","reserved_ed","reserved_ee","reserved_ef",
 		"reserved_f0","reserved_f1","reserved_f2","reserved_f3","reserved_f4","reserved_f5","reserved_f6","reserved_f7",
 		"reserved_f8","reserved_f9","reserved_fa","reserved_fb","reserved_fc","reserved_fd","impdep1","impdep2"};
-	private static void dump_code (byte [] code, PrintWriter out) throws Exception
+	private static void dump_code (byte [] code, PrintWriter out, int indent) throws Exception
 	{
 		if (code.length == 0) return;
 
-		out.println("# Begin code of " + code.length + " bytes");
+		out.println(indents[indent] + "# Begin code of " + code.length + " bytes");
 		for (int i = 0; i < code.length; i ++) {
 			int opcode = code[i] & 0xff;
 			int size;
@@ -108,79 +112,83 @@ public class ClassExplorer
 				int high = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
 				assert low <= high;
 				size = j + 4 * (high - low + 1) - i - 1;
-				out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": tableswitch " +
-						def + ", " + low + ", " + high + " ...");
+				out.println(indents[indent] + "b " + bytesToHex(code, i, size + 1) + " # " +
+						i + ": tableswitch " + def + ", " + low + ", " + high + " ...");
 			} else if (opcode == 0xab) { // lookupswitch
 				int j = (i + 4) / 4 * 4;
 				int def = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
 				int npairs = getIntFromBytes(code[j], code[j+1], code[j+2], code[j+3]); j += 4;
 				assert npairs >= 0;
 				size = j + 8 * npairs - i - 1;
-				out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": lookupswitch " +
-						def + ", " + npairs + " ...");
+				out.println(indents[indent] + "b " + bytesToHex(code, i, size + 1) + " # " +
+						i + ": lookupswitch " + def + ", " + npairs + " ...");
 			} else if (opcode == 0xc4) { // wide
 				if ((code[i] & 0xff) == 0x84) { // iinc
 					size = 5;
-					out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": wide iinc " +
+					out.println(indents[indent] + "b " + bytesToHex(code, i, size + 1) + " # " +
+							i + ": wide iinc " +
 							getIntFromBytes(code[i+2], code[i+3]) + ", " +
 							getIntFromBytes(code[i+4], code[i+5]));
 				} else {
 					size = 3;
-					out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": wide " +
+					out.println(indents[indent] + "b " + bytesToHex(code, i, size + 1) + " # " +
+							i + ": wide " +
 							instructionMnemonic[code[i+1]] + " " +
 							getIntFromBytes(code[i+2], code[i+3]));
 				}
 			} else {
 				size = instructionSize[opcode];
-				out.println("b " + bytesToHex(code, i, size + 1) + " # " + i + ": " + instructionMnemonic[opcode]);
+				out.println(indents[indent] + "b " + bytesToHex(code, i, size + 1) + " # " +
+						i + ": " + instructionMnemonic[opcode]);
 			}
 			i += size;
 		}
-		out.println("# End code");
+		out.println(indents[indent] + "# End code");
 	}
 
-	private static void dump_attribute_info (ByteBuffer in, PrintWriter out) throws Exception
+	private static void dump_attribute_info (ByteBuffer in, PrintWriter out, int indent) throws Exception
 	{
 		int nameid = in.getShort() & 0xffff;
 		String name = constant_pool.get(nameid);
 		int len = in.getInt();
 		assert len >= 0;
 		int end = in.position() + len;
-		out.println("u2 " + nameid + " # " + (name == null ? "unknown attribute" : name));
-		out.println("u4 " + len);
+		out.println(indents[indent] + "u2 " + nameid + " # " + (name == null ? "unknown attribute" : name));
+		out.println(indents[indent] + "u4 " + len);
 
+		indent ++;
 		if ("ConstantValue".equals(name)) {
-			out.println("u2 " + (in.getShort() & 0xffff) + " # constantvalue_index");
+			out.println(indents[indent] + "u2 " + (in.getShort() & 0xffff) + " # constantvalue_index");
 		} else if ("Code".equals(name)) {
-			out.println("u2 " + (in.getShort() & 0xffff) + " # max_stack");
-			out.println("u2 " + (in.getShort() & 0xffff) + " # max_locals");
+			out.println(indents[indent] + "u2 " + (in.getShort() & 0xffff) + " # max_stack");
+			out.println(indents[indent] + "u2 " + (in.getShort() & 0xffff) + " # max_locals");
 
 			int code_length = in.getInt();
 			assert code_length >= 0;
-			out.println("u4 " + code_length + " # code_length");
+			out.println(indents[indent] + "u4 " + code_length + " # code_length");
 			byte [] code = new byte [code_length];
 			in.get(code);
-			dump_code(code, out);
+			dump_code(code, out, indent+1);
 
 			int exception_table_length = in.getShort() & 0xffff;
-			out.println("u2 " + exception_table_length + " # exception_table_length");
+			out.println(indents[indent] + "u2 " + exception_table_length + " # exception_table_length");
 			for (int i = 0; i < exception_table_length; i ++) {
-				out.print("u2 " + (in.getShort() & 0xffff));
+				out.print(indents[indent] + "u2 " + (in.getShort() & 0xffff));
 				out.print("," + (in.getShort() & 0xffff));
 				out.print("," + (in.getShort() & 0xffff));
 				out.println("," + (in.getShort() & 0xffff));
 			}
 
 			int attributes_count = in.getShort() & 0xffff;
-			out.println("u2 " + attributes_count + " # attributes_count");
+			out.println(indents[indent] + "u2 " + attributes_count + " # attributes_count");
 			for (int i = 0; i < attributes_count; i ++)
-				dump_attribute_info(in, out);
+				dump_attribute_info(in, out, indent);
 		} else if ("Signature".equals(name) || "SourceFile".equals(name)) {
 			int cpidx = in.getShort() & 0xffff;
 			String str = constant_pool.get(cpidx);
-			out.println("u2 " + cpidx + (str == null ? "" : " # " + str));
+			out.println(indents[indent] + "u2 " + cpidx + (str == null ? "" : " # " + str));
 		} else {
-			dump_bytes(in, out, len);
+			dump_bytes(in, out, len, indent);
 		}
 		assert in.position() == end;
 	}
@@ -199,7 +207,7 @@ public class ClassExplorer
 		int attributes_count = in.getShort() & 0xffff;
 		out.println("u2 " + attributes_count + " # attributes_count");
 		for (int i = 0; i < attributes_count; i ++)
-			dump_attribute_info(in, out);
+			dump_attribute_info(in, out, 0);
 		out.println("# End " + (isMethod ? "method " : "field ") + name);
 	}
 
@@ -225,7 +233,7 @@ public class ClassExplorer
 			out.println("ascii " + str);
 		} else {
 			out.println("u2 " + len);
-			dump_bytes(bytes, out);
+			dump_bytes(bytes, out, 0);
 		}
 	}
 
@@ -325,7 +333,7 @@ public class ClassExplorer
 		int attributes_count = in.getShort() & 0xffff;
 		out.println("u2 " + attributes_count + " # attributes_count");
 		for (int i = 0; i < attributes_count; i ++)
-			dump_attribute_info(in, out);
+			dump_attribute_info(in, out, 0);
 		out.println("# End attributes section");
 
 		out.close();
@@ -339,6 +347,7 @@ public class ClassExplorer
 		while (true) {
 			String line = in.readLine();
 			if (line == null) break;
+			line = line.replaceAll("^\\s+", ""); // ltrim
 			if (!line.startsWith("ascii ")) {
 				line = line.replaceAll("#.*", "");
 				line = line.trim();

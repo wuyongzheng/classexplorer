@@ -24,7 +24,7 @@ We use an example to show the steps to patch a class file.
 In this example, we want to remove the license check in
 [Subsonic](http://www.subsonic.org/pages/download.jsp) server.
 [This link](https://gist.github.com/ProjectMoon/1318300) shows how to do it in
-source level, but we do it in binary.
+source level, but we do it in binary here.
 
 ### Step 1: Dump
 
@@ -52,4 +52,5 @@ Use javap to verify the rebuild class file.
 javap -p -c SettingsService.new.class
 ```
 
-Then use SettingsService.new.class to replace the original one and repack subsonic.war.
+If there isn't any error, use SettingsService.new.class to replace the original
+one and repack subsonic.war.
